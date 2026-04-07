@@ -14,15 +14,30 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "🌸 Flower Calculator",
-  description: "Daily flower earnings calculator",
+  description: "Track daily flower sales and calculate payouts easily 💰",
 
-  // ✅ PWA META
+  // ✅ PWA
   manifest: "/manifest.json",
-  themeColor: "#16a34a",
 
   icons: {
     icon: "/icon-192.png",
     apple: "/icon-192.png",
+  },
+
+  openGraph: {
+    title: "🌸 Flower Calculator",
+    description: "Track daily flower sales and calculate payouts easily 💰",
+    url: "https://audaykumarr-flower-calculator.vercel.app/",
+    siteName: "Flower Calculator",
+    images: [
+      {
+        url: "/icon-512.png",
+        width: 512,
+        height: 512,
+        alt: "Flower Calculator",
+      },
+    ],
+    type: "website",
   },
 };
 
