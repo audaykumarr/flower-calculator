@@ -26,6 +26,21 @@ export default function Home() {
   const [total, setTotal] = useState(0);
   const [finalTotal, setFinalTotal] = useState(0);
 
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener("beforeinstallprompt", handler);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler);
+    };
+  }, []);
+
   // Load draft
   useEffect(() => {
     const saved = localStorage.getItem("flower_draft");
@@ -197,6 +212,18 @@ export default function Home() {
             <span>₹{Math.round(finalTotal).toLocaleString()}</span>
           </div>
         </div>
+
+        {deferredPrompt && (
+          <button
+            onClick={() => {
+              deferredPrompt.prompt();
+              setDeferredPrompt(null);
+            }}
+            className="w-full mt-4 bg-yellow-500 text-black py-2 rounded font-medium"
+          >
+            📲 Install Flower Calculator 🌸
+          </button>
+        )}
 
         {/* BUTTONS */}
         <div className="grid grid-cols-3 gap-2 mt-5">

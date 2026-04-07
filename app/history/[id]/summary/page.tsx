@@ -47,6 +47,25 @@ export default function Summary() {
 
     const dataUrl = await htmlToImage.toPng(cardRef.current);
 
+    // Convert to file
+    const blob = await (await fetch(dataUrl)).blob();
+    const file = new File([blob], "payout.png", { type: "image/png" });
+
+    // ✅ Try native share (mobile)
+    if (navigator.share && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: "Flower Payout",
+          text: "Check my payout 🌸",
+        });
+        return;
+      } catch (err) {
+        console.log("Share cancelled");
+      }
+    }
+
+    // ❌ fallback → download
     const link = document.createElement("a");
     link.download = "payout.png";
     link.href = dataUrl;

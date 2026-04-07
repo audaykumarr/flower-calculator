@@ -1,6 +1,6 @@
 {
   "name": "Flower Calculator",
-  "short_name": "Flowers",
+  "short_name": "FlowerApp",
   "description": "Daily flower earnings calculator",
   "start_url": "/",
   "display": "standalone",
