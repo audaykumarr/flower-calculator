@@ -33,19 +33,19 @@ export default function Home() {
     if (saved) setData(JSON.parse(saved));
   }, []);
 
-  // LOCAL SAVE ONLY (NO LAG)
+  // SAVE LOCAL
   useEffect(() => {
     localStorage.setItem("flower_draft", JSON.stringify(data));
   }, [data]);
 
-  // CALC (MEMO)
   const { updatedData, total, finalTotal } = useMemo(() => {
     let total = 0;
 
     const updated = data.map((row) => {
       const kgs = parseFloat(row.kgs) || 0;
       const price = parseFloat(row.price) || 0;
-      const amount = kgs && price ? kgs * price : 0;
+      const amount = kgs > 0 && price > 0 ? kgs * price : 0;
+
       total += amount;
 
       return { ...row, amount };
@@ -56,11 +56,6 @@ export default function Home() {
     return { updatedData: updated, total, finalTotal: final };
   }, [data, commissionPercent]);
 
-  // APPLY CALCULATED DATA (ONCE)
-  useEffect(() => {
-    setData(updatedData);
-  }, [updatedData]);
-
   // INPUT CHANGE
   const handleChange = (
     index: number,
@@ -68,9 +63,6 @@ export default function Home() {
     value: string
   ) => {
     const updated = [...data];
-
-    if (updated[index][field] === value) return;
-
     updated[index][field] = value;
 
     setData(updated);
@@ -85,10 +77,10 @@ export default function Home() {
     setTimeout(() => setToast(""), 2000);
   };
 
-  // SAVE (MANUAL FAST)
+  // SAVE
   const saveData = async () => {
     const hasData = data.some(
-      (r) => parseFloat(r.kgs) || parseFloat(r.price)
+      (r) => parseFloat(r.kgs) > 0 || parseFloat(r.price) > 0
     );
 
     if (!hasData) {
@@ -113,7 +105,7 @@ export default function Home() {
 
       if (error) throw error;
 
-      const items = data.map((row, i) => ({
+      const items = updatedData.map((row, i) => ({
         entry_id: entry.id,
         day: i + 1,
         kgs: parseFloat(row.kgs) || 0,
@@ -127,7 +119,7 @@ export default function Home() {
       setDirty(false);
       localStorage.removeItem("flower_draft");
 
-    } catch (err: any) {
+    } catch (err) {
       setToast("Save failed ❌");
     }
 
@@ -138,13 +130,11 @@ export default function Home() {
     <div className="min-h-screen bg-black text-white px-4 py-6 pb-28">
       <div className="max-w-md mx-auto">
 
-        {/* HEADER */}
         <h1 className="text-2xl font-bold text-center mb-6">
           🌸 Flower Calculator
         </h1>
 
-        {/* ROWS */}
-        {data.map((row, i) => (
+        {updatedData.map((row, i) => (
           <div key={i} className="grid grid-cols-4 gap-2 py-2 border-b border-gray-800">
             <span className="text-gray-400 text-sm">
               D{String(i + 1).padStart(2, "0")}
@@ -165,14 +155,16 @@ export default function Home() {
             />
 
             <span className="text-right">
-              {row.amount ? `₹${row.amount}` : "—"}
+              {row.amount > 0
+                ? ₹${row.amount.toLocaleString()}
+                : "—"}
             </span>
           </div>
         ))}
 
-        {/* COMMISSION */}
         <div className="mt-4">
           <input
+            type="number"
             value={commissionPercent}
             onChange={(e) =>
               setCommissionPercent(parseFloat(e.target.value) || 0)
@@ -183,9 +175,9 @@ export default function Home() {
 
         {/* TOTAL */}
         <div className="mt-4 text-sm">
-          <div>Total: ₹{Math.round(total)}</div>
+          <div>Total: ₹{Math.round(total).toLocaleString()}</div>
           <div className="text-green-400 font-bold">
-            Final: ₹{Math.round(finalTotal)}
+            Final: ₹{Math.round(finalTotal).toLocaleString()}
           </div>
         </div>
 
@@ -206,17 +198,11 @@ export default function Home() {
       <div className="fixed bottom-0 left-0 w-full bg-black/80 backdrop-blur border-t border-gray-800 p-3">
         <div className="max-w-md mx-auto grid grid-cols-3 gap-2">
 
-          <button
-            onClick={saveData}
-            className="bg-blue-600 py-3 rounded-xl"
-          >
+          <button onClick={saveData} className="bg-blue-600 py-3 rounded-xl">
             Save
           </button>
 
-          <button
-            onClick={reset}
-            className="bg-gray-700 py-3 rounded-xl"
-          >
+          <button onClick={reset} className="bg-gray-700 py-3 rounded-xl">
             Reset
           </button>
 
