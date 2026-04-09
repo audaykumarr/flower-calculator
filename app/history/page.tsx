@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 type Entry = {
   id: number;
@@ -21,12 +21,22 @@ export default function History() {
   }, []);
 
   const fetchData = async () => {
-    try {
-      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/entries`);
-      setEntries(res.data);
-    } catch (err) {
-      console.error(err);
-    }
+    const { data, error } = await supabase
+      .from("entries")
+      .select("*")
+      .order("id", { ascending: false });
+
+    if (!error) setEntries(data || []);
+  };
+
+  const deleteEntry = async (id: number) => {
+    const confirmDelete = confirm("Delete this entry?");
+    if (!confirmDelete) return;
+
+    await supabase.from("items").delete().eq("entry_id", id);
+    await supabase.from("entries").delete().eq("id", id);
+
+    fetchData();
   };
 
   return (
@@ -41,65 +51,44 @@ export default function History() {
         const commissionPercent = e.commission || 10;
         const commissionValue =
           (e.total * commissionPercent) / 100;
-        
-        return (  
+
+        return (
           <div
             key={e.id}
-            className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 p-4 mb-4 rounded-2xl shadow-md hover:shadow-xl transition"
+            className="bg-gray-900 border border-gray-700 p-4 mb-4 rounded-xl"
           >
-
-            {/* CLICKABLE CONTENT */}
             <div
               onClick={() => router.push(`/history/${e.id}`)}
               className="cursor-pointer"
             >
-              <div className="flex justify-between items-center mb-2">
-                <div className="text-sm text-gray-400 pr-2">
+              <div className="flex justify-between mb-2">
+                <div className="text-sm text-gray-400">
                   {new Date(e.date).toLocaleString()}
                 </div>
 
                 <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-
-                    const confirmDelete = confirm("Delete this entry?");
-                    if (!confirmDelete) return;
-
-                    axios
-                      .delete(`${process.env.NEXT_PUBLIC_API_URL}/entries/${e.id}`)
-                      .then(() => fetchData())
-                      .catch(() => alert("Delete failed ❌"));
+                  onClick={(e2) => {
+                    e2.stopPropagation();
+                    deleteEntry(e.id);
                   }}
-                  className="text-gray-400 hover:text-red-500 text-lg"
-                  title="Delete"
                 >
                   🗑️
                 </button>
               </div>
 
-              <div className="mt-2 text-sm text-gray-300 flex justify-between">
+              <div className="flex justify-between">
                 <span>Total</span>
-                <span className="font-semibold">
-                  ₹{Math.round(e.total).toLocaleString()}
-                </span>
+                <span>₹{Math.round(e.total)}</span>
               </div>
 
-              <div className="flex justify-between items-center mt-2 text-sm">
-                <span className="text-gray-400">
-                  Commission ({commissionPercent}%)
-                </span>
-                <span className="text-red-400 font-medium">
-                  -₹{Math.round(commissionValue).toLocaleString()}
-                </span>
+              <div className="flex justify-between text-red-400">
+                <span>Commission ({commissionPercent}%)</span>
+                <span>-₹{Math.round(commissionValue)}</span>
               </div>
 
-              <div className="border-t border-gray-700 my-2"></div>
-
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-gray-300 font-medium">Final</span>
-                <span className="text-green-400 font-bold text-lg">
-                  ₹{Math.round(e.final).toLocaleString()}
-                </span>
+              <div className="flex justify-between text-green-400 font-bold">
+                <span>Final</span>
+                <span>₹{Math.round(e.final)}</span>
               </div>
             </div>
           </div>

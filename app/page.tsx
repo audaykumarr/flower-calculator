@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import axios from "axios";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 type Row = {
   kgs: string;
@@ -117,18 +117,42 @@ export default function Home() {
     }
 
     try {
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/entries`, {
-        items: data,
-        total,
-        final: finalTotal,
-        commission: commissionPercent,
-      });
+      // 1. Insert entry
+      const { data: entry, error: entryError } = await supabase
+        .from("entries")
+        .insert([
+          {
+            total,
+            final: finalTotal,
+            commission: commissionPercent,
+            cycle_days: data.length,
+          },
+        ])
+        .select()
+        .single();
+
+      if (entryError) throw entryError;
+
+      // 2. Insert items
+      const itemsToInsert = data.map((row, index) => ({
+        entry_id: entry.id,
+        day: index + 1,
+        kgs: parseFloat(row.kgs) || 0,
+        price: parseFloat(row.price) || 0,
+        amount: row.amount,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from("items")
+        .insert(itemsToInsert);
+
+      if (itemsError) throw itemsError;
 
       alert("Saved successfully ✅");
       localStorage.removeItem("flower_draft");
     } catch (error: any) {
       console.error(error);
-      alert(error?.response?.data || "Error saving ❌");
+      alert(error.message || "Error saving ❌");
     }
   };
 
