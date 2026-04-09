@@ -156,7 +156,7 @@ export default function Home() {
 
             <span className="text-right">
               {row.amount > 0
-                ? ₹${row.amount.toLocaleString()}
+                ? `₹${row.amount.toLocaleString()}`
                 : "—"}
             </span>
           </div>
