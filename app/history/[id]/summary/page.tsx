@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import * as htmlToImage from "html-to-image";
@@ -17,10 +17,10 @@ export default function Summary() {
 
   const [items, setItems] = useState<Item[]>([]);
   const [commissionPercent, setCommissionPercent] = useState(10);
+  const [toast, setToast] = useState("");
 
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // 🔥 FETCH
   useEffect(() => {
     fetchData();
   }, []);
@@ -38,58 +38,51 @@ export default function Summary() {
       .single();
 
     setItems(itemsData || []);
-
-    if (entry) {
-      setCommissionPercent(entry.commission || 10);
-    }
+    if (entry) setCommissionPercent(entry.commission || 10);
   };
 
-  const total = items.reduce((sum, i) => sum + i.amount, 0);
-  const commission = total * (commissionPercent / 100);
-  const final = total - commission;
+  const { total, commission, final } = useMemo(() => {
+    const total = items.reduce((s, i) => s + i.amount, 0);
+    const commission = total * (commissionPercent / 100);
+    const final = total - commission;
 
-  // 📸 SHARE IMAGE
+    return { total, commission, final };
+  }, [items, commissionPercent]);
+
   const downloadImage = async () => {
     if (!cardRef.current) return;
 
-    const dataUrl = await htmlToImage.toPng(cardRef.current);
+    const dataUrl = await htmlToImage.toPng(cardRef.current, {
+      cacheBust: true,
+    });
 
     const blob = await (await fetch(dataUrl)).blob();
-    const file = new File([blob], "payout.png", { type: "image/png" });
+    const file = new File([blob], "flower-payout.png", {
+      type: "image/png",
+    });
 
     if (navigator.share && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({
           files: [file],
-          title: "Flower Payout",
-          text: "Check my payout 🌸",
+          title: "🌸 Flower Calculator",
+          text: `My payout is ₹${Math.round(final).toLocaleString()} 💰`,
         });
         return;
       } catch {}
     }
 
     const link = document.createElement("a");
-    link.download = "payout.png";
+    link.download = "flower-payout.png";
     link.href = dataUrl;
     link.click();
+
+    setToast("Downloaded 📸");
+    setTimeout(() => setToast(""), 2000);
   };
 
-  // SAVE COMMISSION
-  useEffect(() => {
-    if (!items.length) return;
-
-    const timeout = setTimeout(async () => {
-      await supabase
-        .from("entries")
-        .update({ commission: commissionPercent })
-        .eq("id", id);
-    }, 1000);
-
-    return () => clearTimeout(timeout);
-  }, [commissionPercent]);
-
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-black text-white">
+    <div className="min-h-screen flex items-center justify-center px-4 bg-black text-white pb-20">
       <div className="w-full max-w-sm">
 
         <h1 className="text-2xl font-bold text-center mb-6">
@@ -97,41 +90,46 @@ export default function Summary() {
         </h1>
 
         <div className="mb-4">
-          <label className="text-sm text-gray-400">
-            Commission %
-          </label>
-
           <input
             type="number"
             value={commissionPercent}
             onChange={(e) =>
               setCommissionPercent(parseFloat(e.target.value) || 0)
             }
-            className="w-full mt-1 bg-gray-800 border border-gray-600 rounded px-2 py-2"
+            className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2"
           />
         </div>
 
         <div
           ref={cardRef}
-          className="rounded-3xl p-6 border border-gray-700 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900"
+          className="rounded-3xl p-6 border border-gray-700 
+          bg-gradient-to-br from-green-900/30 via-gray-900 to-black
+          shadow-2xl"
         >
-          <div className="text-center mb-4">
-            <div className="text-xl font-bold">🌸 Flower Calculator</div>
+
+          <div className="flex flex-col items-center mb-4">
+            <img
+              src="/icon-192.png"
+              className="w-14 h-14 rounded-xl mb-2 shadow-lg"
+            />
+            <div className="text-lg font-semibold">
+              Flower Calculator
+            </div>
             <div className="text-xs text-gray-400">
               Payout Summary
             </div>
           </div>
 
-          <div className="text-center my-5">
-            <div className="text-gray-400 text-sm">Final</div>
-            <div className="text-3xl font-bold text-green-400">
+          <div className="text-center my-6">
+            <div className="text-gray-400 text-sm">
+              Final Amount
+            </div>
+            <div className="text-4xl font-bold text-green-400 mt-1">
               ₹{Math.round(final).toLocaleString()}
             </div>
           </div>
 
-          <div className="border-t border-gray-700 my-4"></div>
-
-          <div className="space-y-2 text-sm">
+          <div className="space-y-3 text-sm mt-4">
             <div className="flex justify-between">
               <span>Total</span>
               <span>₹{Math.round(total).toLocaleString()}</span>
@@ -142,16 +140,26 @@ export default function Summary() {
               <span>-₹{Math.round(commission).toLocaleString()}</span>
             </div>
           </div>
+
+          <div className="text-center text-xs text-gray-500 mt-6">
+            🌸 Generated via Flower Calculator
+          </div>
         </div>
 
         <button
           onClick={downloadImage}
-          className="mt-5 w-full bg-green-500 py-3 rounded-xl"
+          className="mt-5 w-full bg-green-500 hover:bg-green-600 py-3 rounded-xl font-semibold"
         >
-          📸 Download & Share
+          📸 Share to WhatsApp
         </button>
 
       </div>
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 px-4 py-2 rounded shadow text-sm">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

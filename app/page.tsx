@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -11,114 +11,94 @@ type Row = {
 };
 
 export default function Home() {
-  const rows = 15;
   const router = useRouter();
-  const [commissionPercent, setCommissionPercent] = useState(10);
+  const rows = 15;
 
-  const [data, setData] = useState<Row[]>(
+  const generateRows = () =>
     Array.from({ length: rows }, () => ({
       kgs: "",
       price: "",
       amount: 0,
-    }))
-  );
+    }));
 
-  const [total, setTotal] = useState(0);
-  const [finalTotal, setFinalTotal] = useState(0);
+  const [data, setData] = useState<Row[]>(generateRows());
+  const [commissionPercent, setCommissionPercent] = useState(10);
 
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [toast, setToast] = useState("");
+  const [dirty, setDirty] = useState(false);
 
-  useEffect(() => {
-    const handler = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-
-    window.addEventListener("beforeinstallprompt", handler);
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", handler);
-    };
-  }, []);
-
-  // Load draft
+  // LOAD DRAFT
   useEffect(() => {
     const saved = localStorage.getItem("flower_draft");
-
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      setData(parsed);
-
-      const result = calculate(parsed);
-      setTotal(result.total);
-      setFinalTotal(result.finalTotal);
-    }
+    if (saved) setData(JSON.parse(saved));
   }, []);
 
-  // Auto save
+  // LOCAL SAVE ONLY (NO LAG)
   useEffect(() => {
     localStorage.setItem("flower_draft", JSON.stringify(data));
   }, [data]);
 
-  const calculate = (updatedData: Row[]) => {
+  // CALC (MEMO)
+  const { updatedData, total, finalTotal } = useMemo(() => {
     let total = 0;
 
-    const newData = updatedData.map((row) => {
+    const updated = data.map((row) => {
       const kgs = parseFloat(row.kgs) || 0;
       const price = parseFloat(row.price) || 0;
-      const amount = kgs > 0 && price > 0 ? kgs * price : 0;
-
+      const amount = kgs && price ? kgs * price : 0;
       total += amount;
 
       return { ...row, amount };
     });
 
-    const commission = total * (commissionPercent / 100);
-    const finalTotal = total - commission;
+    const final = total - total * (commissionPercent / 100);
 
-    return { newData, total, finalTotal };
-  };
+    return { updatedData: updated, total, finalTotal: final };
+  }, [data, commissionPercent]);
 
+  // APPLY CALCULATED DATA (ONCE)
+  useEffect(() => {
+    setData(updatedData);
+  }, [updatedData]);
+
+  // INPUT CHANGE
   const handleChange = (
-      index: number,
-      field: "kgs" | "price",
-      value: string
-    ) => {
+    index: number,
+    field: "kgs" | "price",
+    value: string
+  ) => {
     const updated = [...data];
+
+    if (updated[index][field] === value) return;
+
     updated[index][field] = value;
 
-    const result = calculate(updated);
-
-    setData(result.newData);
-    setTotal(result.total);
-    setFinalTotal(result.finalTotal);
+    setData(updated);
+    setDirty(true);
   };
 
+  // RESET
   const reset = () => {
-    setData(
-      Array.from({ length: rows }, () => ({
-        kgs: "",
-        price: "",
-        amount: 0,
-      }))
-    );
-    setTotal(0);
-    setFinalTotal(0);
+    setData(generateRows());
+    setDirty(false);
+    setToast("Reset done");
+    setTimeout(() => setToast(""), 2000);
   };
 
+  // SAVE (MANUAL FAST)
   const saveData = async () => {
     const hasData = data.some(
-      (row) => parseFloat(row.kgs) > 0 || parseFloat(row.price) > 0
+      (r) => parseFloat(r.kgs) || parseFloat(r.price)
     );
 
     if (!hasData) {
-      alert("Please enter at least one entry ❌");
+      setToast("Enter data first ❌");
+      setTimeout(() => setToast(""), 2000);
       return;
     }
 
     try {
-      // 1. Insert entry
-      const { data: entry, error: entryError } = await supabase
+      const { data: entry, error } = await supabase
         .from("entries")
         .insert([
           {
@@ -131,33 +111,31 @@ export default function Home() {
         .select()
         .single();
 
-      if (entryError) throw entryError;
+      if (error) throw error;
 
-      // 2. Insert items
-      const itemsToInsert = data.map((row, index) => ({
+      const items = data.map((row, i) => ({
         entry_id: entry.id,
-        day: index + 1,
+        day: i + 1,
         kgs: parseFloat(row.kgs) || 0,
         price: parseFloat(row.price) || 0,
         amount: row.amount,
       }));
 
-      const { error: itemsError } = await supabase
-        .from("items")
-        .insert(itemsToInsert);
+      await supabase.from("items").insert(items);
 
-      if (itemsError) throw itemsError;
-
-      alert("Saved successfully ✅");
+      setToast("Saved successfully ✅");
+      setDirty(false);
       localStorage.removeItem("flower_draft");
-    } catch (error: any) {
-      console.error(error);
-      alert(error.message || "Error saving ❌");
+
+    } catch (err: any) {
+      setToast("Save failed ❌");
     }
+
+    setTimeout(() => setToast(""), 2000);
   };
 
   return (
-    <div className="min-h-screen bg-black text-white px-4 py-6">
+    <div className="min-h-screen bg-black text-white px-4 py-6 pb-28">
       <div className="max-w-md mx-auto">
 
         {/* HEADER */}
@@ -165,114 +143,91 @@ export default function Home() {
           🌸 Flower Calculator
         </h1>
 
-        {/* ROWS (LIKE ENTRY PAGE) */}
-        <div>
-          {data.map((row, i) => (
-            <div
-              key={i}
-              className="grid grid-cols-4 gap-2 py-2 border-b border-gray-800 items-center"
-            >
-              <span className="text-gray-400 text-sm">
-                D{String(i + 1).padStart(2, "0")}
-              </span>
+        {/* ROWS */}
+        {data.map((row, i) => (
+          <div key={i} className="grid grid-cols-4 gap-2 py-2 border-b border-gray-800">
+            <span className="text-gray-400 text-sm">
+              D{String(i + 1).padStart(2, "0")}
+            </span>
 
-              <input
-                type="number"
-                placeholder="Kgs"
-                value={row.kgs}
-                onChange={(e) => handleChange(i, "kgs", e.target.value)}
-                className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white"
-              />
+            <input
+              value={row.kgs}
+              onChange={(e) => handleChange(i, "kgs", e.target.value)}
+              className="bg-gray-900 px-2 rounded"
+              placeholder="Kgs"
+            />
 
-              <input
-                type="number"
-                placeholder="Price"
-                value={row.price}
-                onChange={(e) => handleChange(i, "price", e.target.value)}
-                className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white"
-              />
+            <input
+              value={row.price}
+              onChange={(e) => handleChange(i, "price", e.target.value)}
+              className="bg-gray-900 px-2 rounded"
+              placeholder="Price"
+            />
 
-              <span className="text-right font-semibold">
-                {row.amount > 0
-                  ? `₹${row.amount.toLocaleString()}`
-                  : <span className="text-gray-500">Pending</span>}
-              </span>
-            </div>
-          ))}
-        </div>
+            <span className="text-right">
+              {row.amount ? `₹${row.amount}` : "—"}
+            </span>
+          </div>
+        ))}
 
         {/* COMMISSION */}
         <div className="mt-4">
-          <label className="text-sm text-gray-400">
-            Commission %
-          </label>
-
           <input
-            type="number"
             value={commissionPercent}
             onChange={(e) =>
               setCommissionPercent(parseFloat(e.target.value) || 0)
             }
-            className="w-full mt-1 bg-gray-900 border border-gray-700 rounded px-2 py-2"
+            className="w-full bg-gray-900 px-2 py-2 rounded"
           />
         </div>
 
         {/* TOTAL */}
-        <div className="mt-4 border-t border-gray-700 pt-3">
-          <div className="flex justify-between text-gray-300">
-            <span>Total</span>
-            <span>₹{total.toLocaleString()}</span>
-          </div>
-
-          <div className="flex justify-between text-red-400 mt-1">
-            <span>Commission ({commissionPercent}%)</span>
-            <span>
-              -₹{Math.round(total * (commissionPercent / 100)).toLocaleString()}
-            </span>
-          </div>
-
-          <div className="flex justify-between text-green-400 font-bold text-lg mt-2">
-            <span>Final</span>
-            <span>₹{Math.round(finalTotal).toLocaleString()}</span>
+        <div className="mt-4 text-sm">
+          <div>Total: ₹{Math.round(total)}</div>
+          <div className="text-green-400 font-bold">
+            Final: ₹{Math.round(finalTotal)}
           </div>
         </div>
 
-        {deferredPrompt && (
-          <button
-            onClick={() => {
-              deferredPrompt.prompt();
-              setDeferredPrompt(null);
-            }}
-            className="w-full mt-4 bg-yellow-500 text-black py-2 rounded font-medium"
-          >
-            📲 Install Flower Calculator 🌸
-          </button>
+        {dirty && (
+          <div className="text-yellow-400 text-xs mt-2">
+            Unsaved changes ⚠️
+          </div>
         )}
 
-        {/* BUTTONS */}
-        <div className="grid grid-cols-3 gap-2 mt-5">
+      </div>
+
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-800 px-4 py-2 rounded shadow-lg text-sm">
+          {toast}
+        </div>
+      )}
+
+      <div className="fixed bottom-0 left-0 w-full bg-black/80 backdrop-blur border-t border-gray-800 p-3">
+        <div className="max-w-md mx-auto grid grid-cols-3 gap-2">
+
           <button
             onClick={saveData}
-            className="bg-blue-600 py-2 rounded"
+            className="bg-blue-600 py-3 rounded-xl"
           >
             Save
           </button>
 
           <button
             onClick={reset}
-            className="bg-gray-700 py-2 rounded"
+            className="bg-gray-700 py-3 rounded-xl"
           >
             Reset
           </button>
 
           <button
             onClick={() => router.push("/history")}
-            className="bg-green-600 py-2 rounded"
+            className="bg-green-600 py-3 rounded-xl"
           >
             History
           </button>
-        </div>
 
+        </div>
       </div>
     </div>
   );
